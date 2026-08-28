@@ -8,32 +8,50 @@ GO
 
 DROP TABLE IF EXISTS GOLD.fact_reservations;
 GO 
-SELECT
 
-    RESERVATION_UUID,
+WITH data as (
+    SELECT RESERVATION_UUID,
+    ROW_NUMBER() OVER(PARTITION BY CUSTOMER_UUID ORDER BY DT_DAY_BOOKING_DATE ASC, RESERVATION_UUID ASC) AS NET_CHANNEL_BOOKING_RANK
+    FROM SILVER.reservations_silver
+    WHERE IS_NET= 1 AND CHANNEL = 'TheFork Network'
+),
+
+data2 as (
+    SELECT
+
+    j.RESERVATION_UUID,
 
      ------- foreign keys and dates
-    CUSTOMER_UUID,
-    RESTAURANT_UUID,
-    DT_DAY_BOOKING_DATE,
-    DT_DAY_MEAL_DATE,
+    j.CUSTOMER_UUID,
+    j.RESTAURANT_UUID,
+    j.DT_DAY_BOOKING_DATE,
+    j.DT_DAY_MEAL_DATE,
     
     ------- numeric fields
-    AMT_REVENUE_EUR,
-    AMT_REVENUE_USD,
-    AMT_REVENUE_LOCAL,
-    PARTY_SIZE,
+    j.AMT_REVENUE_EUR,
+    j.AMT_REVENUE_USD,
+    j.AMT_REVENUE_LOCAL,
+    j.PARTY_SIZE,
 
     ------- descriptive fields
-    IS_NET,
-    CHANNEL,
-    IS_ONLINE,
-    IS_WALK_IN,
-    LUNCH_TYPE
-   
+    j.IS_NET,
+    j.CHANNEL,
+    j.IS_ONLINE,
+    j.IS_WALK_IN,
+    j.LUNCH_TYPE,
+
+    ---- new fields
+    k.NET_CHANNEL_BOOKING_RANK
+ 
+
+FROM SILVER.reservations_silver as j 
+LEFT JOIN data as k on j.RESERVATION_UUID = k.RESERVATION_UUID
+WHERE j.RESERVATION_UUID IS NOT NULL
+)
+
+SELECT *
 INTO GOLD.fact_reservations
-FROM SILVER.reservations_silver
-WHERE RESERVATION_UUID IS NOT NULL ;
+FROM data2;
 GO
 
 
@@ -77,7 +95,7 @@ SELECT
     DATEPART(weekday, DateValue) AS day_of_week
 INTO GOLD.dim_date
 FROM DateSequence
-OPTION (MAXRECURSION 0);
+OPTION (MAXRECURSION 0); /* ajouter un commentaire*/
 GO
 
 
@@ -122,3 +140,7 @@ select * from GOLD.fact_reservations;
 select * from GOLD.dim_restaurants;
 select * from GOLD.dim_date;
 select * from GOLD.dim_customers;
+
+select *
+from GOLD.fact_reservations as j join GOLD.dim_customers as k on j.CUSTOMER_UUID = k.CUSTOMER_UUID
+where k.CATEGORY = 'offline';
